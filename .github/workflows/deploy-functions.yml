@@ -1,0 +1,59 @@
+name: Deploy Functions (Azure Function App)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - src/LoanOnboard.Functions/**
+      - src/LoanOnboard.Core/**
+      - Directory.Build.props
+      - .github/workflows/deploy-functions.yml
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-functions
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish
+        run: dotnet publish src/LoanOnboard.Functions/LoanOnboard.Functions.csproj --configuration Release --output ./publish/functions
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: functions
+          path: ./publish/functions
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: functions
+          path: ./functions
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Function App
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME }}
+          package: ./functions

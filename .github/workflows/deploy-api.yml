@@ -1,0 +1,59 @@
+name: Deploy API (App Service)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - src/LoanOnboardService/**
+      - src/LoanOnboard.Core/**
+      - Directory.Build.props
+      - .github/workflows/deploy-api.yml
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish
+        run: dotnet publish src/LoanOnboardService/LoanOnboardService.csproj --configuration Release --output ./publish/api
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api
+          path: ./publish/api
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: api
+          path: ./api
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: ./api

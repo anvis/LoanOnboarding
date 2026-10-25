@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LoanOnboard.Core/LoanOnboard.Core.csproj" />
+    <Project Path="src/LoanOnboardService/LoanOnboardService.csproj" />
+    <Project Path="src/LoanOnboard.Functions/LoanOnboard.Functions.csproj" />
+  </Folder>
+</Solution>

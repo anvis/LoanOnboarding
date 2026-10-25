@@ -1,0 +1,87 @@
+name: Deploy infrastructure
+
+# Creates or updates the Azure resources from infra/main.bicep, then applies database/schema.sql.
+# Safe to re-run: Bicep is declarative and schema.sql is idempotent.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - infra/**
+      - database/**
+      - .github/workflows/deploy-infra.yml
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-infra
+  cancel-in-progress: false
+
+jobs:
+  infra:
+    runs-on: ubuntu-latest
+    env:
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      LOCATION: ${{ vars.AZURE_LOCATION || 'centralindia' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create resource group
+        run: az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
+
+      - name: Deploy Bicep
+        id: deploy
+        uses: azure/arm-deploy@v2
+        with:
+          scope: resourcegroup
+          resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP }}
+          template: infra/main.bicep
+          parameters: >-
+            sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}
+            aadClientId=${{ vars.AAD_CLIENT_ID }}
+          failOnStdErr: false
+
+      - name: Allow this runner through the SQL firewall
+        run: |
+          RUNNER_IP=$(curl -s https://api.ipify.org)
+          echo "RUNNER_IP=$RUNNER_IP" >> "$GITHUB_ENV"
+          az sql server firewall-rule create \
+            --resource-group "$RESOURCE_GROUP" \
+            --server "${{ steps.deploy.outputs.sqlServerName }}" \
+            --name github-runner \
+            --start-ip-address "$RUNNER_IP" --end-ip-address "$RUNNER_IP" --output none
+
+      - name: Apply database schema
+        uses: azure/sql-action@v2.3
+        with:
+          connection-string: "Server=tcp:${{ steps.deploy.outputs.sqlServerFqdn }},1433;Initial Catalog=${{ steps.deploy.outputs.sqlDatabaseName }};User ID=loanadmin;Password=${{ secrets.SQL_ADMIN_PASSWORD }};Encrypt=True;TrustServerCertificate=False;Connection Timeout=60;"
+          path: database/schema.sql
+
+      - name: Remove runner firewall rule
+        if: always()
+        run: |
+          az sql server firewall-rule delete \
+            --resource-group "$RESOURCE_GROUP" \
+            --server "${{ steps.deploy.outputs.sqlServerName }}" \
+            --name github-runner --output none || true
+
+      - name: Summary
+        run: |
+          {
+            echo "### Deployed"
+            echo "- API: ${{ steps.deploy.outputs.webAppUrl }}"
+            echo "- Web app: \`${{ steps.deploy.outputs.webAppName }}\`"
+            echo "- Function app: \`${{ steps.deploy.outputs.functionAppName }}\`"
+            echo ""
+            echo "Set repository variables AZURE_WEBAPP_NAME and AZURE_FUNCTIONAPP_NAME to the names above."
+          } >> "$GITHUB_STEP_SUMMARY"

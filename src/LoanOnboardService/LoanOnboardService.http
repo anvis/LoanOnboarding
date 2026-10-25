@@ -1,0 +1,54 @@
+### Local smoke tests. Run the API in Development with "Auth": { "DevBypass": true } in appsettings.Development.json.
+@host = https://localhost:5001
+
+### Onboarding API: submit an application (multipart: payload JSON + one file per document type)
+POST {{host}}/v1/applications
+Idempotency-Key: demo-0001
+X-Dev-Roles: Loan.Submit
+X-Dev-Dealer-Id: D-10442
+Content-Type: multipart/form-data; boundary=BOUNDARY
+
+--BOUNDARY
+Content-Disposition: form-data; name="payload"
+
+{"dealerId":"D-10442","requestedAmount":28500,"termMonths":48,"customer":{"firstName":"Asha","lastName":"Rao","email":"asha@example.com","phone":"+919999999999","dateOfBirth":"1990-04-12","nationalId":"ABCDE1234F"}}
+--BOUNDARY
+Content-Disposition: form-data; name="ID_PROOF"; filename="id.pdf"
+Content-Type: application/pdf
+
+< ./sample.pdf
+--BOUNDARY--
+
+### Status API (use the ackId from the response above)
+GET {{host}}/v1/applications/REPLACE_ACK_ID/status
+X-Dev-Roles: Loan.Read
+X-Dev-Dealer-Id: D-10442
+
+### Status API: list a dealer's applications
+GET {{host}}/v1/dealers/D-10442/applications?status=VERIFICATION
+X-Dev-Roles: Loan.Read
+X-Dev-Dealer-Id: D-10442
+
+### Approval API: agent queue
+GET {{host}}/v1/approvals/queue
+X-Dev-Roles: Loan.Agent
+X-Dev-User: agent-1
+
+### Approval API: approve
+POST {{host}}/v1/applications/REPLACE_ACK_ID/approve
+X-Dev-Roles: Loan.Approver
+X-Dev-User: approver-1
+Content-Type: application/json
+
+{
+  "consentRef": "REC-2026-000123",
+  "scriptVersion": "v3",
+  "callReference": "CALL-98765",
+  "confirmedAmount": 28500,
+  "confirmedTermMonths": 48,
+  "disclosuresDelivered": true,
+  "comment": "Customer confirmed terms"
+}
+
+### Health
+GET {{host}}/health/ready

@@ -1,0 +1,14 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+
+    "ConnectionStrings__Sql": "REPLACE_WITH_SQL_CONNECTION_STRING",
+    "ServiceBusConnection": "REPLACE_WITH_SERVICE_BUS_CONNECTION_STRING",
+
+    "Loan__MaxStageAttempts": "3",
+    "Loan__StageValidityHours": "72",
+    "Loan__NeedsInfoExpiryDays": "14"
+  }
+}
